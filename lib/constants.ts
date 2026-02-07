@@ -45,6 +45,22 @@ export const DEX_CONFIGS: DEXConfig[] = [
   },
 ];
 
+// Testnet token configurations
+export const TESTNET_TOKENS = {
+  XLM: {
+    code: 'XLM',
+    issuer: null, // Native asset
+    contractAddress: 'CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC', // Wrapped XLM on Soroban
+    decimals: 7,
+  },
+  USDC: {
+    code: 'USDC',
+    issuer: 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5',
+    contractAddress: 'CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA', // Soroban USDC
+    decimals: 7,
+  },
+};
+
 // Common Stellar tokens
 export const COMMON_TOKENS: TokenInfo[] = [
   {

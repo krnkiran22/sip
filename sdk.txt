@@ -1,0 +1,566 @@
+🎯 COMPLETE SWAP INTEGRATION GUIDE - SDEX + SOROSWAP
+📚 DOCUMENTATION FOR AI TO BUILD OPTIMAL SWAP SYSTEM
+
+🏗️ ARCHITECTURE OVERVIEW
+Your swap system will:
+
+Get quotes from BOTH SDEX and Soroswap
+Compare prices to find the best rate
+Show user the optimal path
+Execute swap on the chosen DEX
+
+
+📦 REQUIRED PACKAGES
+bashnpm install @stellar/stellar-sdk @soroswap/sdk @stellar/freighter-api
+
+🔧 IMPLEMENTATION GUIDE
+1. STELLAR SDEX INTEGRATION
+A. Get SDEX Quote (Path Payment)
+typescript// utils/sdex.ts
+import * as StellarSdk from '@stellar/stellar-sdk';
+
+interface SDEXQuote {
+  inputAmount: string;
+  outputAmount: string;
+  path: string[];
+  priceImpact: number;
+  source: 'SDEX';
+}
+
+/**
+ * Get SDEX quote for swap
+ * @param fromAsset - Source asset (e.g., USDC)
+ * @param toAsset - Destination asset (e.g., XLM)
+ * @param amount - Amount to swap
+ * @param network - 'TESTNET' or 'PUBLIC'
+ */
+export async function getSDEXQuote(
+  fromAsset: StellarSdk.Asset,
+  toAsset: StellarSdk.Asset,
+  amount: string,
+  network: 'TESTNET' | 'PUBLIC' = 'TESTNET'
+): Promise<SDEXQuote> {
+  try {
+    const serverUrl = network === 'TESTNET'
+      ? 'https://horizon-testnet.stellar.org'
+      : 'https://horizon.stellar.org';
+    
+    const server = new StellarSdk.Horizon.Server(serverUrl);
+
+    // Find strict send path (best rate for exact input amount)
+    const pathsResponse = await server
+      .strictSendPaths(fromAsset, amount, [toAsset])
+      .call();
+
+    if (pathsResponse.records.length === 0) {
+      throw new Error('No path found on SDEX');
+    }
+
+    // Get best path (first record is optimal)
+    const bestPath = pathsResponse.records[0];
+
+    return {
+      inputAmount: amount,
+      outputAmount: bestPath.destination_amount,
+      path: bestPath.path.map((asset: any) => 
+        asset.asset_type === 'native' ? 'XLM' : `${asset.asset_code}:${asset.asset_issuer}`
+      ),
+      priceImpact: calculatePriceImpact(amount, bestPath.destination_amount),
+      source: 'SDEX',
+    };
+  } catch (error) {
+    console.error('SDEX quote error:', error);
+    throw error;
+  }
+}
+
+function calculatePriceImpact(input: string, output: string): number {
+  // Simple price impact calculation (can be improved)
+  const rate = parseFloat(output) / parseFloat(input);
+  return Math.abs((1 - rate) * 100);
+}
+B. Execute SDEX Swap
+typescript// utils/sdex.ts (continued)
+
+/**
+ * Build SDEX swap transaction (Path Payment Strict Send)
+ * @param userPublicKey - User's Stellar public key
+ * @param fromAsset - Source asset
+ * @param toAsset - Destination asset  
+ * @param amount - Amount to send
+ * @param minAmount - Minimum amount to receive (slippage protection)
+ * @param network - 'TESTNET' or 'PUBLIC'
+ * @returns Transaction XDR string
+ */
+export async function buildSDEXSwap(
+  userPublicKey: string,
+  fromAsset: StellarSdk.Asset,
+  toAsset: StellarSdk.Asset,
+  amount: string,
+  minAmount: string,
+  network: 'TESTNET' | 'PUBLIC' = 'TESTNET'
+): Promise<string> {
+  try {
+    const serverUrl = network === 'TESTNET'
+      ? 'https://horizon-testnet.stellar.org'
+      : 'https://horizon.stellar.org';
+    
+    const server = new StellarSdk.Horizon.Server(serverUrl);
+    const networkPassphrase = network === 'TESTNET'
+      ? StellarSdk.Networks.TESTNET
+      : StellarSdk.Networks.PUBLIC;
+
+    // Load user account
+    const account = await server.loadAccount(userPublicKey);
+
+    // Get optimal path
+    const pathsResponse = await server
+      .strictSendPaths(fromAsset, amount, [toAsset])
+      .call();
+
+    if (pathsResponse.records.length === 0) {
+      throw new Error('No path found');
+    }
+
+    const bestPath = pathsResponse.records[0];
+
+    // Build transaction
+    const transaction = new StellarSdk.TransactionBuilder(account, {
+      fee: StellarSdk.BASE_FEE,
+      networkPassphrase,
+    })
+      .addOperation(
+        StellarSdk.Operation.pathPaymentStrictSend({
+          sendAsset: fromAsset,
+          sendAmount: amount,
+          destination: userPublicKey, // Send to self
+          destAsset: toAsset,
+          destMin: minAmount,
+          path: bestPath.path.map((asset: any) => 
+            asset.asset_type === 'native' 
+              ? StellarSdk.Asset.native()
+              : new StellarSdk.Asset(asset.asset_code, asset.asset_issuer)
+          ),
+        })
+      )
+      .setTimeout(180)
+      .build();
+
+    return transaction.toXDR();
+  } catch (error) {
+    console.error('SDEX swap build error:', error);
+    throw error;
+  }
+}
+
+2. SOROSWAP INTEGRATION
+A. Get Soroswap Quote
+typescript// utils/soroswap.ts
+import { SoroswapSDK, SupportedProtocols, TradeType, SupportedNetworks } from '@soroswap/sdk';
+
+interface SoroswapQuote {
+  inputAmount: string;
+  outputAmount: string;
+  path: string[];
+  protocols: string[];
+  priceImpact: number;
+  source: 'SOROSWAP';
+  quoteData: any; // Store full quote for execution
+}
+
+/**
+ * Get Soroswap quote (aggregates SDEX, Soroswap AMM, Phoenix, Aqua)
+ * @param assetInAddress - Input token contract address
+ * @param assetOutAddress - Output token contract address
+ * @param amount - Amount to swap (as BigInt)
+ * @param network - 'TESTNET' or 'MAINNET'
+ * @param apiKey - Soroswap API key
+ */
+export async function getSoroswapQuote(
+  assetInAddress: string,
+  assetOutAddress: string,
+  amount: bigint,
+  network: 'TESTNET' | 'MAINNET' = 'TESTNET',
+  apiKey: string
+): Promise<SoroswapQuote> {
+  try {
+    const soroswapClient = new SoroswapSDK({
+      apiKey,
+      defaultNetwork: network === 'TESTNET' 
+        ? SupportedNetworks.TESTNET 
+        : SupportedNetworks.MAINNET,
+    });
+
+    // Get quote (aggregates across all protocols)
+    const quote = await soroswapClient.quote({
+      assetIn: assetInAddress,
+      assetOut: assetOutAddress,
+      amount: amount,
+      tradeType: TradeType.EXACT_IN,
+      protocols: [
+        SupportedProtocols.SDEX,      // Stellar DEX
+        SupportedProtocols.SOROSWAP,  // Soroswap AMM
+        SupportedProtocols.PHOENIX,   // Phoenix DEX
+        SupportedProtocols.AQUA,      // Aquarius
+      ],
+      slippageBps: '50', // 0.5% slippage
+    });
+
+    return {
+      inputAmount: amount.toString(),
+      outputAmount: quote.outputAmount.toString(),
+      path: quote.path || [],
+      protocols: quote.protocols || [],
+      priceImpact: parseFloat(quote.priceImpact || '0'),
+      source: 'SOROSWAP',
+      quoteData: quote, // Store for execution
+    };
+  } catch (error) {
+    console.error('Soroswap quote error:', error);
+    throw error;
+  }
+}
+B. Execute Soroswap Swap
+typescript// utils/soroswap.ts (continued)
+
+/**
+ * Build Soroswap swap transaction
+ * @param quote - Quote from getSoroswapQuote
+ * @param userAddress - User's Stellar address
+ * @param apiKey - Soroswap API key
+ * @returns Transaction XDR string
+ */
+export async function buildSoroswapSwap(
+  quote: any, // The quoteData from getSoroswapQuote
+  userAddress: string,
+  apiKey: string
+): Promise<string> {
+  try {
+    const soroswapClient = new SoroswapSDK({ apiKey });
+
+    // Build transaction from quote
+    const buildResponse = await soroswapClient.build({
+      quote: quote,
+      from: userAddress,
+      to: userAddress, // Can be different recipient
+    });
+
+    if (!buildResponse.xdr) {
+      throw new Error('Failed to build Soroswap transaction');
+    }
+
+    return buildResponse.xdr;
+  } catch (error) {
+    console.error('Soroswap swap build error:', error);
+    throw error;
+  }
+}
+
+3. OPTIMAL PATH FINDER (Compare Both DEXs)
+typescript// utils/optimalSwap.ts
+import { getSDEXQuote, buildSDEXSwap } from './sdex';
+import { getSoroswapQuote, buildSoroswapSwap } from './soroswap';
+import * as StellarSdk from '@stellar/stellar-sdk';
+
+interface OptimalQuote {
+  bestDex: 'SDEX' | 'SOROSWAP';
+  inputAmount: string;
+  outputAmount: string;
+  path: string[];
+  priceImpact: number;
+  sdexQuote?: any;
+  soroswapQuote?: any;
+}
+
+/**
+ * Get quotes from both DEXs and find optimal route
+ */
+export async function getOptimalSwapQuote(
+  fromAssetCode: string,
+  fromAssetIssuer: string | null, // null for XLM (native)
+  toAssetCode: string,
+  toAssetIssuer: string | null,
+  amount: string,
+  network: 'TESTNET' | 'PUBLIC' = 'TESTNET',
+  soroswapApiKey: string
+): Promise<OptimalQuote> {
+  try {
+    // Create Stellar assets for SDEX
+    const fromAsset = fromAssetIssuer
+      ? new StellarSdk.Asset(fromAssetCode, fromAssetIssuer)
+      : StellarSdk.Asset.native();
+    
+    const toAsset = toAssetIssuer
+      ? new StellarSdk.Asset(toAssetCode, toAssetIssuer)
+      : StellarSdk.Asset.native();
+
+    // Get quotes from both DEXs in parallel
+    const [sdexQuote, soroswapQuote] = await Promise.allSettled([
+      getSDEXQuote(fromAsset, toAsset, amount, network),
+      getSoroswapQuote(
+        fromAssetIssuer || 'native', // Convert to contract address format
+        toAssetIssuer || 'native',
+        BigInt(parseFloat(amount) * 1e7), // Convert to stroops
+        network,
+        soroswapApiKey
+      ),
+    ]);
+
+    // Extract successful quotes
+    const sdex = sdexQuote.status === 'fulfilled' ? sdexQuote.value : null;
+    const soroswap = soroswapQuote.status === 'fulfilled' ? soroswapQuote.value : null;
+
+    if (!sdex && !soroswap) {
+      throw new Error('No quotes available from any DEX');
+    }
+
+    // Compare output amounts to find best DEX
+    const sdexOutput = sdex ? parseFloat(sdex.outputAmount) : 0;
+    const soroswapOutput = soroswap ? parseFloat(soroswap.outputAmount) / 1e7 : 0;
+
+    const bestDex = sdexOutput >= soroswapOutput ? 'SDEX' : 'SOROSWAP';
+    const bestQuote = bestDex === 'SDEX' ? sdex! : soroswap!;
+
+    return {
+      bestDex,
+      inputAmount: amount,
+      outputAmount: bestDex === 'SDEX' 
+        ? bestQuote.outputAmount 
+        : (soroswapOutput).toString(),
+      path: bestQuote.path,
+      priceImpact: bestQuote.priceImpact,
+      sdexQuote: sdex,
+      soroswapQuote: soroswap,
+    };
+  } catch (error) {
+    console.error('Optimal quote error:', error);
+    throw error;
+  }
+}
+
+/**
+ * Execute swap on the optimal DEX
+ */
+export async function executeOptimalSwap(
+  optimalQuote: OptimalQuote,
+  userPublicKey: string,
+  slippagePercent: number = 0.5,
+  soroswapApiKey: string
+): Promise<string> {
+  try {
+    const minAmount = (
+      parseFloat(optimalQuote.outputAmount) * (1 - slippagePercent / 100)
+    ).toString();
+
+    if (optimalQuote.bestDex === 'SDEX') {
+      // Execute on SDEX
+      const fromAsset = /* create asset from optimalQuote */;
+      const toAsset = /* create asset from optimalQuote */;
+      
+      return await buildSDEXSwap(
+        userPublicKey,
+        fromAsset,
+        toAsset,
+        optimalQuote.inputAmount,
+        minAmount,
+        'TESTNET'
+      );
+    } else {
+      // Execute on Soroswap
+      return await buildSoroswapSwap(
+        optimalQuote.soroswapQuote!.quoteData,
+        userPublicKey,
+        soroswapApiKey
+      );
+    }
+  } catch (error) {
+    console.error('Execute swap error:', error);
+    throw error;
+  }
+}
+
+4. REACT COMPONENT IMPLEMENTATION
+typescript// components/SwapInterface.tsx
+'use client';
+
+import { useState } from 'react';
+import { getOptimalSwapQuote, executeOptimalSwap } from '@/utils/optimalSwap';
+import { signTransaction } from '@stellar/freighter-api';
+import * as StellarSdk from '@stellar/stellar-sdk';
+
+export default function SwapInterface({ userPublicKey }: { userPublicKey: string }) {
+  const [fromAmount, setFromAmount] = useState('');
+  const [quote, setQuote] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+
+  const handleGetQuote = async () => {
+    setLoading(true);
+    try {
+      const optimalQuote = await getOptimalSwapQuote(
+        'USDC',
+        'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5', // USDC issuer (testnet)
+        'XLM',
+        null, // Native asset
+        fromAmount,
+        'TESTNET',
+        process.env.NEXT_PUBLIC_SOROSWAP_API_KEY!
+      );
+      
+      setQuote(optimalQuote);
+      console.log('Optimal quote:', optimalQuote);
+    } catch (error) {
+      console.error('Quote error:', error);
+      alert('Failed to get quote');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSwap = async () => {
+    if (!quote) return;
+    
+    setLoading(true);
+    try {
+      // Build transaction
+      const xdr = await executeOptimalSwap(
+        quote,
+        userPublicKey,
+        0.5, // 0.5% slippage
+        process.env.NEXT_PUBLIC_SOROSWAP_API_KEY!
+      );
+
+      // Sign with Freighter
+      const signResult = await signTransaction(xdr, {
+        network: 'TESTNET',
+      });
+
+      if (signResult.error) {
+        throw new Error(signResult.error);
+      }
+
+      // Submit to network
+      const server = new StellarSdk.Horizon.Server('https://horizon-testnet.stellar.org');
+      const transaction = StellarSdk.TransactionBuilder.fromXDR(
+        signResult.signedTxXdr,
+        StellarSdk.Networks.TESTNET
+      );
+      
+      const result = await server.submitTransaction(transaction as any);
+      console.log('Swap successful!', result);
+      alert('Swap completed!');
+    } catch (error: any) {
+      console.error('Swap error:', error);
+      alert('Swap failed: ' + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="p-6 bg-white rounded-lg shadow-lg max-w-md">
+      <h2 className="text-2xl font-bold mb-4">Optimal Swap</h2>
+      
+      {/* Input */}
+      <div className="mb-4">
+        <label className="block text-sm font-medium mb-2">From Amount (USDC)</label>
+        <input
+          type="number"
+          value={fromAmount}
+          onChange={(e) => setFromAmount(e.target.value)}
+          className="w-full px-4 py-2 border rounded-lg"
+          placeholder="100"
+        />
+      </div>
+
+      {/* Get Quote Button */}
+      <button
+        onClick={handleGetQuote}
+        disabled={loading || !fromAmount}
+        className="w-full px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:bg-gray-300 mb-4"
+      >
+        {loading ? 'Getting Quote...' : 'Get Best Quote'}
+      </button>
+
+      {/* Quote Display */}
+      {quote && (
+        <div className="p-4 bg-gray-50 rounded-lg mb-4">
+          <div className="flex justify-between mb-2">
+            <span className="font-medium">Best DEX:</span>
+            <span className="text-green-600 font-bold">{quote.bestDex}</span>
+          </div>
+          <div className="flex justify-between mb-2">
+            <span>You Get:</span>
+            <span className="font-bold">{parseFloat(quote.outputAmount).toFixed(4)} XLM</span>
+          </div>
+          <div className="flex justify-between mb-2">
+            <span>Price Impact:</span>
+            <span>{quote.priceImpact.toFixed(2)}%</span>
+          </div>
+          
+          {/* Show both quotes for comparison */}
+          <div className="mt-4 pt-4 border-t">
+            <p className="text-sm font-medium mb-2">Comparison:</p>
+            {quote.sdexQuote && (
+              <div className="text-sm flex justify-between">
+                <span>SDEX:</span>
+                <span>{parseFloat(quote.sdexQuote.outputAmount).toFixed(4)} XLM</span>
+              </div>
+            )}
+            {quote.soroswapQuote && (
+              <div className="text-sm flex justify-between">
+                <span>Soroswap:</span>
+                <span>{(parseFloat(quote.soroswapQuote.outputAmount) / 1e7).toFixed(4)} XLM</span>
+              </div>
+            )}
+          </div>
+
+          {/* Execute Swap Button */}
+          <button
+            onClick={handleSwap}
+            disabled={loading}
+            className="w-full mt-4 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:bg-gray-300"
+          >
+            {loading ? 'Swapping...' : `Swap on ${quote.bestDex}`}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+📋 TESTNET TOKEN ADDRESSES
+typescript// constants/tokens.ts
+
+export const TESTNET_TOKENS = {
+  XLM: {
+    code: 'XLM',
+    issuer: null, // Native asset
+    contractAddress: 'CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC', // Wrapped XLM on Soroban
+    decimals: 7,
+  },
+  USDC: {
+    code: 'USDC',
+    issuer: 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5',
+    contractAddress: 'CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA', // Soroban USDC
+    decimals: 7,
+  },
+};
+
+🎯 KEY POINTS FOR AI
+
+Two Quote Systems: SDEX uses Horizon API, Soroswap uses their aggregator SDK
+Amount Format: SDEX uses string, Soroswap uses BigInt (multiply by 1e7 for stroops)
+Asset Format: SDEX uses Asset objects, Soroswap uses contract addresses
+Optimal Selection: Compare outputAmount from both, choose higher
+Execution: Different transaction builders for each DEX
+Signing: Both return XDR, sign with Freighter, submit to Horizon
+
+
+📚 OFFICIAL DOCUMENTATION LINKS
+
+Stellar SDK: https://stellar.github.io/js-stellar-sdk/
+Soroswap SDK: https://github.com/soroswap/sdk
+SDEX Path Payments: https://developers.stellar.org/docs/learn/fundamentals/transactions/list-of-operations#path-payment-strict-send
+Soroswap API: https://docs.soroswap.finance/readme/getting-started/quickstart
+
+This complete guide provides everything needed to build an optimal swap aggregator! 🚀 Sonnet 4.5

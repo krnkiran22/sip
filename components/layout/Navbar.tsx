@@ -21,16 +21,16 @@ export function Navbar() {
   ];
 
   return (
-    <nav className="border-b bg-white/50 backdrop-blur-sm sticky top-0 z-50">
+    <nav className="border-b border-white/10 bg-[#030005]/80 backdrop-blur-xl sticky top-0 z-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
           {/* Logo */}
-          <Link href="/" className="flex items-center space-x-2">
-            <div className="bg-gradient-to-r from-blue-600 to-purple-600 p-2 rounded-lg">
-              <Zap className="h-6 w-6 text-white" />
+          <Link href="/" className="flex items-center space-x-3">
+            <div className="bg-gradient-to-r from-[#9200E1] to-[#4d65ff] p-2 rounded-xl shadow-[0_0_20px_rgba(146,0,225,0.4)]">
+              <Zap className="h-5 w-5 text-white" />
             </div>
-            <span className="text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-              Stellar Intent Protocol
+            <span className="text-lg font-bold tracking-tight bg-gradient-to-r from-white to-white/60 bg-clip-text text-transparent">
+              STELLAR INTENT PROTOCOL
             </span>
           </Link>
 
@@ -43,10 +43,10 @@ export function Navbar() {
                   key={link.href}
                   href={link.href}
                   className={cn(
-                    'px-4 py-2 rounded-lg text-sm font-medium transition-colors',
+                    'px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-widest transition-all',
                     isActive
-                      ? 'bg-blue-100 text-blue-700'
-                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                      ? 'bg-white/[0.08] text-white border border-white/20'
+                      : 'text-white/40 hover:text-white hover:bg-white/[0.05]'
                   )}
                 >
                   {link.label}
