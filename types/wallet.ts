@@ -27,11 +27,28 @@ export interface WalletState {
   error: string | null;
 }
 
+// Freighter API types - matches official @stellar/freighter-api
 export interface FreighterAPI {
   isConnected: () => Promise<boolean>;
   getPublicKey: () => Promise<string>;
-  signTransaction: (xdr: string, options?: any) => Promise<string>;
   getNetwork: () => Promise<string>;
+  getNetworkDetails: () => Promise<{
+    network: string;
+    networkPassphrase: string;
+    networkUrl: string;
+  }>;
+  signTransaction: (
+    xdr: string,
+    opts?: {
+      network?: string;
+      networkPassphrase?: string;
+      accountToSign?: string;
+    }
+  ) => Promise<string>;
+  signAuthEntry: (
+    entryXdr: string,
+    opts?: { accountToSign?: string }
+  ) => Promise<string>;
 }
 
 export interface AlbedoAPI {
@@ -46,7 +63,7 @@ export interface RabetAPI {
 
 declare global {
   interface Window {
-    freighter?: FreighterAPI;
+    freighterApi?: FreighterAPI;
     albedo?: AlbedoAPI;
     rabet?: RabetAPI;
   }

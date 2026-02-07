@@ -3,8 +3,8 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useWalletStore } from '@/store/walletStore';
-import { WalletButton } from './wallet/WalletButton';
-import { NetworkSelector } from './wallet/NetworkSelector';
+import { WalletButton } from '@/components/wallet/WalletButton';
+import { NetworkSelector } from '@/components/wallet/NetworkSelector';
 import { Zap } from 'lucide-react';
 import { cn } from '@/lib/utils';
 

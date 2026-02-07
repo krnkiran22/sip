@@ -52,7 +52,7 @@ export function WalletDropdown({ onClose }: WalletDropdownProps) {
   return (
     <div
       ref={dropdownRef}
-      className="absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-lg border py-2 z-50"
+      className="fixed right-4 top-20 w-64 bg-white rounded-lg shadow-xl border py-2 z-[100]"
     >
       {/* Address */}
       <div className="px-4 py-3 border-b">

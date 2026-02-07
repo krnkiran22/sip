@@ -22,7 +22,7 @@ export function getNetworkPassphrase(network: NetworkType): string {
 export async function loadAccount(
   address: string,
   network: NetworkType
-): Promise<StellarSdk.AccountResponse> {
+): Promise<any> {
   const server = getServer(network);
   return await server.loadAccount(address);
 }

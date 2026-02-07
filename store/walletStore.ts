@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { WalletProvider, NetworkType, WalletBalance } from '@/types/wallet';
 import * as StellarSdk from '@stellar/stellar-sdk';
+import { isConnected, requestAccess, getAddress, getNetwork, signTransaction as freighterSignTransaction } from '@stellar/freighter-api';
 
 interface WalletState {
   // State
@@ -39,10 +40,34 @@ export const useWalletStore = create<WalletState>()(
           let publicKey: string | null = null;
 
           if (provider === 'freighter') {
-            if (!window.freighter) {
-              throw new Error('Freighter wallet not installed');
+            // Check if Freighter is installed using official API
+            const connectionCheck = await isConnected();
+            
+            if (!connectionCheck.isConnected) {
+              throw new Error('Freighter wallet not found. Please install the Freighter browser extension from freighter.app and refresh the page.');
             }
-            publicKey = await window.freighter.getPublicKey();
+            
+            console.log('✅ Freighter detected!');
+            
+            try {
+              // Request access (this triggers the Freighter popup)
+              const accessResult = await requestAccess();
+              
+              if (accessResult.error) {
+                throw new Error(accessResult.error);
+              }
+              
+              if (accessResult.address) {
+                publicKey = accessResult.address;
+                console.log('✅ Freighter connected:', publicKey.slice(0, 4) + '...' + publicKey.slice(-4));
+              }
+            } catch (err: any) {
+              if (err.message?.includes('User declined access') || err.message?.includes('User rejected')) {
+                throw new Error('Connection rejected. Please approve the connection in Freighter.');
+              }
+              throw err;
+            }
+            
           } else if (provider === 'albedo') {
             if (!window.albedo) {
               throw new Error('Albedo wallet not installed');
@@ -126,6 +151,50 @@ export const useWalletStore = create<WalletState>()(
       // Set error
       setError: (error: string | null) => {
         set({ error });
+      },
+
+      // Sign transaction
+      signTransaction: async (transactionXDR: string) => {
+        const { provider, network } = get();
+        
+        if (!provider) {
+          throw new Error('No wallet connected');
+        }
+
+        try {
+          let signedXDR: string;
+
+          if (provider === 'freighter') {
+            const networkName = network === 'testnet' ? 'TESTNET' : 'PUBLIC';
+            const result = await freighterSignTransaction(transactionXDR, {
+              network: networkName,
+            });
+            
+            if (result.error) {
+              throw new Error(result.error);
+            }
+            
+            signedXDR = result.signedTxXdr;
+          } else if (provider === 'albedo') {
+            if (!window.albedo) {
+              throw new Error('Albedo wallet not available');
+            }
+            const result = await window.albedo.tx({ xdr: transactionXDR });
+            signedXDR = result.signed_envelope_xdr;
+          } else if (provider === 'rabet') {
+            if (!window.rabet) {
+              throw new Error('Rabet wallet not available');
+            }
+            const result = await window.rabet.sign(transactionXDR);
+            signedXDR = result.xdr;
+          } else {
+            throw new Error('Unsupported wallet provider');
+          }
+
+          return signedXDR;
+        } catch (error: any) {
+          throw new Error(`Failed to sign transaction: ${error.message}`);
+        }
       },
     }),
     {

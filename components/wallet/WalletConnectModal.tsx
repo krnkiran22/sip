@@ -3,6 +3,8 @@
 import { useWalletStore } from '@/store/walletStore';
 import { WalletProvider } from '@/types/wallet';
 import { X } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { useEffect, useState } from 'react';
 
 interface WalletConnectModalProps {
   onClose: () => void;
@@ -13,29 +15,41 @@ const walletProviders: Array<{
   name: string;
   description: string;
   logo: string;
+  recommended?: boolean;
+  installUrl?: string;
 }> = [
   {
     id: 'freighter',
     name: 'Freighter',
-    description: 'The most popular Stellar wallet',
+    description: 'Official Stellar wallet - FREE & Recommended',
     logo: '🚀',
+    recommended: true,
+    installUrl: 'https://freighter.app',
   },
   {
     id: 'albedo',
     name: 'Albedo',
-    description: 'Secure web wallet for Stellar',
+    description: 'Web-based Stellar wallet',
     logo: '🌟',
+    installUrl: 'https://albedo.link',
   },
   {
     id: 'rabet',
     name: 'Rabet',
     description: 'Browser extension wallet',
     logo: '🐰',
+    installUrl: 'https://rabet.io',
   },
 ];
 
 export function WalletConnectModal({ onClose }: WalletConnectModalProps) {
   const { connect, error } = useWalletStore();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+    return () => setMounted(false);
+  }, []);
 
   const handleConnect = async (provider: WalletProvider) => {
     try {
@@ -47,9 +61,11 @@ export function WalletConnectModal({ onClose }: WalletConnectModalProps) {
     }
   };
 
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl max-w-md w-full shadow-xl">
+  if (!mounted) return null;
+
+  return createPortal(
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[9999] p-4" onClick={onClose}>
+      <div className="bg-white rounded-xl max-w-md w-full shadow-2xl" onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b">
           <h2 className="text-xl font-bold">Connect Wallet</h2>
@@ -67,8 +83,13 @@ export function WalletConnectModal({ onClose }: WalletConnectModalProps) {
             <button
               key={provider.id}
               onClick={() => handleConnect(provider.id)}
-              className="w-full flex items-center space-x-4 p-4 border rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-all group"
+              className="w-full flex items-center space-x-4 p-4 border rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-all group relative"
             >
+              {provider.recommended && (
+                <div className="absolute -top-2 -right-2 px-2 py-1 bg-blue-600 text-white text-xs font-semibold rounded-full">
+                  Recommended
+                </div>
+              )}
               <div className="text-3xl">{provider.logo}</div>
               <div className="flex-1 text-left">
                 <div className="font-semibold text-gray-900 group-hover:text-blue-700">
@@ -80,6 +101,20 @@ export function WalletConnectModal({ onClose }: WalletConnectModalProps) {
               </div>
             </button>
           ))}
+          
+          <div className="pt-4 border-t">
+            <p className="text-xs text-gray-500 text-center">
+              Don't have a wallet?{' '}
+              <a
+                href="https://freighter.app"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-600 hover:underline font-medium"
+              >
+                Install Freighter (FREE)
+              </a>
+            </p>
+          </div>
         </div>
 
         {/* Error */}
@@ -99,6 +134,7 @@ export function WalletConnectModal({ onClose }: WalletConnectModalProps) {
           </p>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
