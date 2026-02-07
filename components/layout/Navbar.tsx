@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 import { useWalletStore } from '@/store/walletStore';
 import { WalletButton } from '@/components/wallet/WalletButton';
 import { NetworkSelector } from '@/components/wallet/NetworkSelector';
-import { Zap } from 'lucide-react';
+import { Zap, Bell } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export function Navbar() {
@@ -13,7 +13,6 @@ export function Navbar() {
   const { address } = useWalletStore();
 
   const navLinks = [
-    { href: '/', label: 'Home' },
     { href: '/dashboard', label: 'Dashboard' },
     { href: '/intents', label: 'Intents' },
     { href: '/templates', label: 'Templates' },
@@ -21,47 +20,54 @@ export function Navbar() {
   ];
 
   return (
-    <nav className="border-b border-white/10 bg-[#030005]/80 backdrop-blur-xl sticky top-0 z-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between items-center h-16">
-          {/* Logo */}
-          <Link href="/" className="flex items-center space-x-3">
-            <div className="bg-gradient-to-r from-[#9200E1] to-[#4d65ff] p-2 rounded-xl shadow-[0_0_20px_rgba(146,0,225,0.4)]">
-              <Zap className="h-5 w-5 text-white" />
-            </div>
-            <span className="text-lg font-bold tracking-tight bg-gradient-to-r from-white to-white/60 bg-clip-text text-transparent">
-              STELLAR INTENT PROTOCOL
-            </span>
-          </Link>
-
-          {/* Navigation Links */}
-          <div className="hidden md:flex items-center space-x-1">
-            {navLinks.map((link) => {
-              const isActive = pathname === link.href;
-              return (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  className={cn(
-                    'px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-widest transition-all',
-                    isActive
-                      ? 'bg-white/[0.08] text-white border border-white/20'
-                      : 'text-white/40 hover:text-white hover:bg-white/[0.05]'
-                  )}
-                >
-                  {link.label}
-                </Link>
-              );
-            })}
+    <header className="fixed top-6 left-0 right-0 z-50 flex justify-center px-4">
+      {/* Main Glass Pill */}
+      <nav className="flex items-center gap-6 px-6 py-3 rounded-full border border-white/10 bg-white/5 backdrop-blur-xl shadow-2xl">
+        
+        {/* Logo Section */}
+        <Link href="/" className="flex items-center gap-2 mr-4">
+          <div className="bg-gradient-to-r from-[#9200E1] to-[#4d65ff] p-2 rounded-full shadow-[0_0_20px_rgba(146,0,225,0.4)]">
+            <Zap className="h-4 w-4 text-white" />
           </div>
+          <span className="text-sm font-bold tracking-tight text-white hidden md:block">
+            SIP
+          </span>
+        </Link>
 
-          {/* Right side - Wallet & Network */}
-          <div className="flex items-center space-x-3">
-            {address && <NetworkSelector />}
-            <WalletButton />
-          </div>
+        {/* Navigation Links */}
+        <div className="hidden md:flex items-center gap-6">
+          {navLinks.map((link) => {
+            const isActive = pathname === link.href;
+            return (
+              <Link
+                key={link.href}
+                href={link.href}
+                className={cn(
+                  'text-sm font-medium transition-colors',
+                  isActive
+                    ? 'text-white'
+                    : 'text-white/60 hover:text-white'
+                )}
+              >
+                {link.label}
+              </Link>
+            );
+          })}
         </div>
-      </div>
-    </nav>
+
+        {/* Actions Section */}
+        <div className="flex items-center gap-3 ml-4">
+          {address && <NetworkSelector />}
+          
+          {/* Wallet Button - White CTA Style */}
+          <WalletButton />
+          
+          {/* Notification Icon */}
+          <button className="p-2 text-white/70 hover:text-white transition-colors">
+            <Bell size={18} strokeWidth={2.5} />
+          </button>
+        </div>
+      </nav>
+    </header>
   );
 }

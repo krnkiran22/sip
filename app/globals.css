@@ -37,3 +37,12 @@ body {
   background: rgba(146, 0, 225, 0.5);
 }
 
+@layer components {
+  .nav-glass {
+    background: rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+}
+

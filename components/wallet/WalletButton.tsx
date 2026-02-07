@@ -52,7 +52,7 @@ export function WalletButton() {
       <>
         <button
           onClick={() => setShowDropdown(!showDropdown)}
-          className="flex items-center space-x-2 px-4 py-2 bg-blue-100 text-blue-700 rounded-lg font-medium hover:bg-blue-200 transition-colors"
+          className="flex items-center gap-2 px-5 py-2 bg-white text-black text-sm font-bold rounded-full hover:bg-white/90 transition-all shadow-lg"
         >
           <Wallet className="h-4 w-4" />
           <span>{formatAddress(address)}</span>
@@ -70,12 +70,12 @@ export function WalletButton() {
         onClick={() => setShowModal(true)}
         disabled={isConnecting || isChecking}
         className={cn(
-          "flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg font-medium transition-colors",
-          (isConnecting || isChecking) ? "opacity-50 cursor-not-allowed" : "hover:bg-blue-700"
+          "flex items-center gap-2 px-5 py-2 bg-white text-black text-sm font-bold rounded-full transition-all shadow-lg",
+          (isConnecting || isChecking) ? "opacity-50 cursor-not-allowed" : "hover:bg-white/90"
         )}
       >
         <Wallet className="h-4 w-4" />
-        <span>{isChecking ? 'Checking...' : isConnecting ? 'Connecting...' : 'Connect Wallet'}</span>
+        <span>{isChecking ? 'Checking...' : isConnecting ? 'Connecting...' : 'Connect'}</span>
       </button>
 
       {showModal && (
